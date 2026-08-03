@@ -35,7 +35,7 @@ EFI_EVENT                       mGopRegisterEvent;
 VOID                            *mGopRegistration;
 EFI_HANDLE                      mBoundHandle;
 EFI_GRAPHICS_OUTPUT_PROTOCOL    *mOriginalGop;
-VOID                            *mDummyInterface;
+//VOID                            *mDummyInterface;
 EFI_DRIVER_BINDING_PROTOCOL     gGopOverrideDriverBinding;
 
 //
@@ -79,7 +79,7 @@ EFI_DRIVER_BINDING_PROTOCOL  gGopOverrideDriverBinding = {
   NULL    // DriverBindingHandle - filled in at entry
 };
 
-EFI_GUID mDummyProtocolGuid = { 0x00000000, 0x0000, 0x0000, { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+//EFI_GUID mDummyProtocolGuid = { 0x00000000, 0x0000, 0x0000, { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
 
 /**
   Install GopOverride on the given handle, uninstalling the original GOP.
@@ -121,6 +121,7 @@ InstallGopOverride (
     return Status;
   }
 
+#if 0
   //
   // Install dummy protocol on this handle.
   //
@@ -134,6 +135,7 @@ InstallGopOverride (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to install dummy protocol - code=%r\n", Status));
     return Status;
   }
+#endif
 
   //
   // Uninstall the original GraphicsOutputProtocol on this handle.
@@ -317,6 +319,7 @@ GopOverrideDriverBindingStart (
     return Status;
   }
 
+#if 0
   //
   // Open the Dummy protocol by driver.
   //
@@ -332,6 +335,7 @@ GopOverrideDriverBindingStart (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to open Dummy protocol - code=%r\n", Status));
     return Status;
   }
+#endif
 
   return Status;
 }
@@ -414,6 +418,7 @@ GopOverrideDriverBindingStop (
     mOriginalGop = NULL;
   }
 
+#if 0  //
   //
   // Close the Dummy protocol.
   //
@@ -430,7 +435,6 @@ GopOverrideDriverBindingStop (
 
   //
   // Uninstall the Dummy protocol.
-  //
   Status = gBS->UninstallMultipleProtocolInterfaces (
                   ControllerHandle,
                   &mDummyProtocolGuid,
@@ -441,6 +445,7 @@ GopOverrideDriverBindingStop (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall Dummy protocol - code=%r\n", Status));
     return Status;
   }
+#endif
 
 
   DEBUG ((DEBUG_INFO, "INFO [GOP]: Original GOP restored on handle %p\n", ControllerHandle));

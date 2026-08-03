@@ -1351,21 +1351,11 @@ SREDriverSupported (
                   (VOID **)&Gop,
                   This->DriverBindingHandle,
                   Controller,
-                  EFI_OPEN_PROTOCOL_BY_DRIVER
+                  EFI_OPEN_PROTOCOL_TEST_PROTOCOL
                   );
-
   if (EFI_ERROR (Status)) {
     goto Exit;
   }
-
-  // Close the parent GOP.
-  //
-  gBS->CloseProtocol (
-         Controller,
-         mMsGopOverrideProtocolGuid,
-         This->DriverBindingHandle,
-         Controller
-         );
 
 Exit:
 
@@ -1403,7 +1393,7 @@ SREDriverStart (
                   (VOID **)&mParentGop,
                   This->DriverBindingHandle,
                   Controller,
-                  EFI_OPEN_PROTOCOL_BY_DRIVER
+                  EFI_OPEN_PROTOCOL_GET_PROTOCOL
                   );
 
   if (EFI_ERROR (Status)) {
@@ -1413,8 +1403,18 @@ SREDriverStart (
 
   // Manufacture a new GOP and a RenderingEngine Protocol.
   //
-  mSREGopHandle = Controller;
+  mSREGopHandle = NULL;
   Status        = InitializeRenderingEngine ();
+
+  Status = gBS->OpenProtocol (
+                  Controller,
+                  mMsGopOverrideProtocolGuid,
+                  (VOID **)&mParentGop,
+                  This->DriverBindingHandle,
+                  mSREGopHandle,
+                  EFI_OPEN_PROTOCOL_BY_CHILD_CONTROLLER
+                  );
+
 
 Exit:
 
