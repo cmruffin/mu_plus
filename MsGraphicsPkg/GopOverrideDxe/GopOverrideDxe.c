@@ -35,7 +35,7 @@ EFI_EVENT                       mGopRegisterEvent;
 VOID                            *mGopRegistration;
 EFI_HANDLE                      mBoundHandle;
 EFI_GRAPHICS_OUTPUT_PROTOCOL    *mOriginalGop;
-//VOID                            *mDummyInterface;
+VOID                            *mDummyInterface;
 EFI_DRIVER_BINDING_PROTOCOL     gGopOverrideDriverBinding;
 
 //
@@ -79,7 +79,7 @@ EFI_DRIVER_BINDING_PROTOCOL  gGopOverrideDriverBinding = {
   NULL    // DriverBindingHandle - filled in at entry
 };
 
-//EFI_GUID mDummyProtocolGuid = { 0x00000000, 0x0000, 0x0000, { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+EFI_GUID mDummyProtocolGuid = { 0x8d0c2ba7, 0x6f31, 0x4e95, { 0xa2, 0x48, 0x73, 0xd9, 0x1c, 0xb6, 0x50, 0xef } };
 
 /**
   Install GopOverride on the given handle, uninstalling the original GOP.
@@ -121,7 +121,6 @@ InstallGopOverride (
     return Status;
   }
 
-#if 0
   //
   // Install dummy protocol on this handle.
   //
@@ -135,7 +134,6 @@ InstallGopOverride (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to install dummy protocol - code=%r\n", Status));
     return Status;
   }
-#endif
 
   //
   // Uninstall the original GraphicsOutputProtocol on this handle.
@@ -256,7 +254,7 @@ GopOverrideDriverBindingSupported (
   EFI_STATUS  Status;
   VOID        *Interface;
 
-  DEBUG((DEBUG_INFO, "[%a] Begin\n", __func__));
+  DEBUG((DEBUG_INFO, "[%a] Begin ControllerHandle=0x%lx\n", __func__, ControllerHandle));
 
   //
   // Check if GraphicsOutputProtocol is present on this handle.
@@ -319,7 +317,6 @@ GopOverrideDriverBindingStart (
     return Status;
   }
 
-#if 0
   //
   // Open the Dummy protocol by driver.
   //
@@ -335,7 +332,6 @@ GopOverrideDriverBindingStart (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to open Dummy protocol - code=%r\n", Status));
     return Status;
   }
-#endif
 
   return Status;
 }
@@ -382,6 +378,20 @@ GopOverrideDriverBindingStop (
   }
 
   //
+  // Uninstall the GopOverride protocol. Must be uninstalled first to initiate a Stop() on the SimpleRenderingEngine driver.
+  //
+  Status = gBS->UninstallMultipleProtocolInterfaces (
+                  ControllerHandle,
+                  mMsGopOverrideProtocolGuid,
+                  (VOID *)GopOverrideInterface,
+                  NULL
+                  );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall GopOverride - code=%r\n", Status));
+    return Status;
+  }
+
+  //
   // Reinstall the original GraphicsOutputProtocol on the same handle.
   //
   Status = gBS->InstallProtocolInterface (
@@ -396,21 +406,6 @@ GopOverrideDriverBindingStop (
   }
 
   //
-  // Uninstall the GopOverride protocol.
-  //
-  Status = gBS->UninstallMultipleProtocolInterfaces (
-                  ControllerHandle,
-                  mMsGopOverrideProtocolGuid,
-                  (VOID *)GopOverrideInterface,
-                  NULL
-                  );
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall GopOverride - code=%r\n", Status));
-    return Status;
-  }
-
-
-   //
   // Clear tracked state if this was the handle bound via notification.
   //
   if (ControllerHandle == mBoundHandle) {
@@ -418,7 +413,6 @@ GopOverrideDriverBindingStop (
     mOriginalGop = NULL;
   }
 
-#if 0  //
   //
   // Close the Dummy protocol.
   //
@@ -445,8 +439,6 @@ GopOverrideDriverBindingStop (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall Dummy protocol - code=%r\n", Status));
     return Status;
   }
-#endif
-
 
   DEBUG ((DEBUG_INFO, "INFO [GOP]: Original GOP restored on handle %p\n", ControllerHandle));
   return EFI_SUCCESS;
