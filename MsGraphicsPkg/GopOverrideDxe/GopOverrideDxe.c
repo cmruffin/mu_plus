@@ -120,6 +120,7 @@ InstallGopOverride (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to install GopOverride protocol - code=%r\n", Status));
     return Status;
   }
+  Gop->SetMode(Gop, 0); // CMR NO NO NO
 
   //
   // Install dummy protocol on this handle.
@@ -254,8 +255,6 @@ GopOverrideDriverBindingSupported (
   EFI_STATUS  Status;
   VOID        *Interface;
 
-  DEBUG((DEBUG_INFO, "[%a] Begin ControllerHandle=0x%lx\n", __func__, ControllerHandle));
-
   //
   // Check if GraphicsOutputProtocol is present on this handle.
   //
@@ -284,7 +283,6 @@ GopOverrideDriverBindingSupported (
     return EFI_ALREADY_STARTED;
   }
 
-  DEBUG((DEBUG_INFO, "[%a] End. Status=%r\n", __func__, Status));
   return EFI_SUCCESS;
 }
 
