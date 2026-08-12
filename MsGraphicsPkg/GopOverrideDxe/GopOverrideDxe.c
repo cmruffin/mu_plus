@@ -120,7 +120,6 @@ InstallGopOverride (
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to install GopOverride protocol - code=%r\n", Status));
     return Status;
   }
-  Gop->SetMode(Gop, 0); // CMR NO NO NO
 
   //
   // Install dummy protocol on this handle.
