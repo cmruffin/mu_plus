@@ -34,9 +34,12 @@ EFI_GUID                        *mMsGopOverrideProtocolGuid;
 EFI_EVENT                       mGopRegisterEvent;
 VOID                            *mGopRegistration;
 EFI_HANDLE                      mBoundHandle;
-EFI_GRAPHICS_OUTPUT_PROTOCOL    *mOriginalGop;
-VOID                            *mDummyInterface;
 EFI_DRIVER_BINDING_PROTOCOL     gGopOverrideDriverBinding;
+
+typedef struct {
+  EFI_HANDLE                    ControllerHandle;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL  *OriginalGop;
+} GOP_OVERRIDE_BINDING_MARKER;
 
 //
 // Forward declarations
@@ -79,11 +82,10 @@ EFI_DRIVER_BINDING_PROTOCOL  gGopOverrideDriverBinding = {
   NULL    // DriverBindingHandle - filled in at entry
 };
 
-EFI_GUID mDummyProtocolGuid = { 0x8d0c2ba7, 0x6f31, 0x4e95, { 0xa2, 0x48, 0x73, 0xd9, 0x1c, 0xb6, 0x50, 0xef } };
-
 /**
   Install GopOverride on the given handle, uninstalling the original GOP.
 
+  @param[in] This      Driver Binding Protocol instance.
   @param[in] Handle    Handle with GraphicsOutputProtocol installed.
 
   @retval EFI_SUCCESS  Override installed successfully.
@@ -91,20 +93,37 @@ EFI_GUID mDummyProtocolGuid = { 0x8d0c2ba7, 0x6f31, 0x4e95, { 0xa2, 0x48, 0x73, 
 STATIC
 EFI_STATUS
 InstallGopOverride (
-  IN EFI_HANDLE  Handle
+  IN EFI_DRIVER_BINDING_PROTOCOL  *This,
+  IN EFI_HANDLE                   Handle
   )
 {
-  EFI_STATUS                    Status;
-  EFI_GRAPHICS_OUTPUT_PROTOCOL  *Gop;
+  EFI_STATUS                   Status;
+  GOP_OVERRIDE_BINDING_MARKER  *BindingMarker;
+  BOOLEAN                      OverrideInstalled;
+  BOOLEAN                      MarkerInstalled;
+  BOOLEAN                      MarkerOpened;
+
+  BindingMarker     = NULL;
+  OverrideInstalled = FALSE;
+  MarkerInstalled   = FALSE;
+  MarkerOpened      = FALSE;
+
+  BindingMarker = AllocateZeroPool (sizeof (*BindingMarker));
+  if (BindingMarker == NULL) {
+    Status = EFI_OUT_OF_RESOURCES;
+    goto Exit;
+  }
+
+  BindingMarker->ControllerHandle = Handle;
 
   Status = gBS->HandleProtocol (
                   Handle,
                   &gEfiGraphicsOutputProtocolGuid,
-                  (VOID **)&Gop
+                  (VOID **)&BindingMarker->OriginalGop
                   );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to get GOP protocol - code=%r\n", Status));
-    return Status;
+    goto Exit;
   }
 
   //
@@ -114,26 +133,46 @@ InstallGopOverride (
                   &Handle,
                   mMsGopOverrideProtocolGuid,
                   EFI_NATIVE_INTERFACE,
-                  (VOID *)Gop
+                  (VOID *)BindingMarker->OriginalGop
                   );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to install GopOverride protocol - code=%r\n", Status));
-    return Status;
+    goto Exit;
   }
 
+  OverrideInstalled = TRUE;
+
   //
-  // Install dummy protocol on this handle.
+  // Install and open the private binding marker to establish driver-model
+  // ownership before removing the consumed GOP from the controller.
   //
   Status = gBS->InstallProtocolInterface (
                   &Handle,
-                  &mDummyProtocolGuid,
+                  &gMsGopOverrideDriverBindingMarkerProtocolGuid,
                   EFI_NATIVE_INTERFACE,
-                  (VOID *)Gop
+                  BindingMarker
                   );
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to install dummy protocol - code=%r\n", Status));
-    return Status;
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to install binding marker - code=%r\n", Status));
+    goto Exit;
   }
+
+  MarkerInstalled = TRUE;
+
+  Status = gBS->OpenProtocol (
+                  Handle,
+                  &gMsGopOverrideDriverBindingMarkerProtocolGuid,
+                  (VOID **)&BindingMarker,
+                  This->DriverBindingHandle,
+                  Handle,
+                  EFI_OPEN_PROTOCOL_BY_DRIVER
+                  );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to open binding marker - code=%r\n", Status));
+    goto Exit;
+  }
+
+  MarkerOpened = TRUE;
 
   //
   // Uninstall the original GraphicsOutputProtocol on this handle.
@@ -141,31 +180,52 @@ InstallGopOverride (
   Status = gBS->UninstallMultipleProtocolInterfaces (
                   Handle,
                   &gEfiGraphicsOutputProtocolGuid,
-                  (VOID *)Gop,
+                  (VOID *)BindingMarker->OriginalGop,
                   NULL
                   );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall GOP protocol - code=%r\n", Status));
-    //
-    // Roll back: uninstall the override we just installed.
-    //
-    gBS->UninstallMultipleProtocolInterfaces (
-           Handle,
-           mMsGopOverrideProtocolGuid,
-           (VOID *)Gop,
-           NULL
-           );
-    return Status;
+    goto Exit;
   }
 
   //
   // Save state for Stop() to restore.
   //
   mBoundHandle = Handle;
-  mOriginalGop = Gop;
 
   DEBUG ((DEBUG_INFO, "INFO [GOP]: GopOverride installed on handle %p\n", Handle));
-  return EFI_SUCCESS;
+
+Exit:
+  if (EFI_ERROR (Status)) {
+    if (MarkerOpened) {
+      gBS->CloseProtocol (
+             Handle,
+             &gMsGopOverrideDriverBindingMarkerProtocolGuid,
+             This->DriverBindingHandle,
+             Handle
+             );
+    }
+
+    if (MarkerInstalled) {
+      gBS->UninstallProtocolInterface (
+             Handle,
+             &gMsGopOverrideDriverBindingMarkerProtocolGuid,
+             BindingMarker
+             );
+    }
+
+    if (OverrideInstalled) {
+      gBS->UninstallProtocolInterface (
+             Handle,
+             mMsGopOverrideProtocolGuid,
+             BindingMarker->OriginalGop
+             );
+    }
+
+    FreePool (BindingMarker);
+  }
+
+  return Status;
 }
 
 /**
@@ -199,11 +259,12 @@ GopRegisteredCallback (
                   &HandleCount,
                   &Handles
                   );
-  if (EFI_ERROR (Status) || (HandleCount != 1)) {
-    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to locate one GOP handle - code=%r - HandleCount=%d\n", Status, HandleCount));
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to locate GOP handle - code=%r - HandleCount=%d\n", Status, HandleCount));
     goto Exit;
   }
 
+  // In case multiple GOPs are installed prior to dispatching the callback, just use the first handle. Generally HandleCount should be 1.
   Status = gBS->ConnectController (Handles[0], NULL, NULL, TRUE);
   if (EFI_ERROR (Status)) {
     DEBUG((DEBUG_ERROR, "ERROR [GOP]: Unable to connect controller - code=%r\n", Status));
@@ -278,7 +339,6 @@ GopOverrideDriverBindingSupported (
                   &Interface
                   );
   if (Status == EFI_SUCCESS) {
-    DEBUG((DEBUG_INFO, "[%a:%d] GopOverride already installed\n", __func__, __LINE__));
     return EFI_ALREADY_STARTED;
   }
 
@@ -309,26 +369,7 @@ GopOverrideDriverBindingStart (
 
   DEBUG ((DEBUG_INFO, "INFO [GOP]: DriverBindingStart on handle %p\n", ControllerHandle));
 
-  Status = InstallGopOverride (ControllerHandle);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  //
-  // Open the Dummy protocol by driver.
-  //
-  Status = gBS->OpenProtocol (
-                  ControllerHandle,
-                  &mDummyProtocolGuid,
-                  (VOID **) &mDummyInterface,
-                  This->DriverBindingHandle,
-                  ControllerHandle,
-                  EFI_OPEN_PROTOCOL_BY_DRIVER
-                  );
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to open Dummy protocol - code=%r\n", Status));
-    return Status;
-  }
+  Status = InstallGopOverride (This, ControllerHandle);
 
   return Status;
 }
@@ -357,7 +398,17 @@ GopOverrideDriverBindingStop (
   )
 {
   EFI_STATUS                    Status;
+  EFI_STATUS                    RollbackStatus;
   EFI_GRAPHICS_OUTPUT_PROTOCOL  *GopOverrideInterface;
+  GOP_OVERRIDE_BINDING_MARKER   *BindingMarker;
+  BOOLEAN                       OverrideUninstalled;
+  BOOLEAN                       GopRestored;
+  BOOLEAN                       MarkerClosed;
+
+  BindingMarker       = NULL;
+  OverrideUninstalled = FALSE;
+  GopRestored          = FALSE;
+  MarkerClosed         = FALSE;
 
   DEBUG ((DEBUG_INFO, "INFO [GOP]: DriverBindingStop on handle %p\n", ControllerHandle));
 
@@ -371,7 +422,25 @@ GopOverrideDriverBindingStop (
                   );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: GopOverride not found on handle - code=%r\n", Status));
-    return EFI_DEVICE_ERROR;
+    Status = EFI_DEVICE_ERROR;
+    goto Exit;
+  }
+
+  Status = gBS->HandleProtocol (
+                  ControllerHandle,
+                  &gMsGopOverrideDriverBindingMarkerProtocolGuid,
+                  (VOID **)&BindingMarker
+                  );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Binding marker not found on handle - code=%r\n", Status));
+    Status = EFI_DEVICE_ERROR;
+    goto Exit;
+  }
+
+  if (BindingMarker->ControllerHandle != ControllerHandle) {
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Binding marker controller mismatch\n"));
+    Status = EFI_DEVICE_ERROR;
+    goto Exit;
   }
 
   //
@@ -385,8 +454,10 @@ GopOverrideDriverBindingStop (
                   );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall GopOverride - code=%r\n", Status));
-    return Status;
+    goto Exit;
   }
+
+  OverrideUninstalled = TRUE;
 
   //
   // Reinstall the original GraphicsOutputProtocol on the same handle.
@@ -395,50 +466,96 @@ GopOverrideDriverBindingStop (
                   &ControllerHandle,
                   &gEfiGraphicsOutputProtocolGuid,
                   EFI_NATIVE_INTERFACE,
-                  (VOID *)GopOverrideInterface
+                  (VOID *)BindingMarker->OriginalGop
                   );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to reinstall GOP - code=%r\n", Status));
-    return EFI_DEVICE_ERROR;
+    Status = EFI_DEVICE_ERROR;
+    goto Rollback;
   }
 
-  //
-  // Clear tracked state if this was the handle bound via notification.
-  //
-  if (ControllerHandle == mBoundHandle) {
-    mBoundHandle = NULL;
-    mOriginalGop = NULL;
-  }
+  GopRestored = TRUE;
 
   //
-  // Close the Dummy protocol.
+  // Close and remove the binding marker after all produced protocols have
+  // been removed and the original GOP has been restored.
   //
   Status = gBS->CloseProtocol (
                   ControllerHandle,
-                  &mDummyProtocolGuid,
+                  &gMsGopOverrideDriverBindingMarkerProtocolGuid,
                   This->DriverBindingHandle,
                   ControllerHandle
                   );
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to close Dummy protocol - code=%r\n", Status));
-    return EFI_DEVICE_ERROR;
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to close binding marker - code=%r\n", Status));
+    Status = EFI_DEVICE_ERROR;
+    goto Rollback;
   }
 
-  //
-  // Uninstall the Dummy protocol.
+  MarkerClosed = TRUE;
+
   Status = gBS->UninstallMultipleProtocolInterfaces (
                   ControllerHandle,
-                  &mDummyProtocolGuid,
-                  (VOID *) mDummyInterface,
+                  &gMsGopOverrideDriverBindingMarkerProtocolGuid,
+                  BindingMarker,
                   NULL
                   );
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall Dummy protocol - code=%r\n", Status));
-    return Status;
+    DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to uninstall binding marker - code=%r\n", Status));
+    goto Rollback;
   }
 
+  if (ControllerHandle == mBoundHandle) {
+    mBoundHandle = NULL;
+  }
+
+  FreePool (BindingMarker);
+
   DEBUG ((DEBUG_INFO, "INFO [GOP]: Original GOP restored on handle %p\n", ControllerHandle));
-  return EFI_SUCCESS;
+  goto Exit;
+
+Rollback:
+  if (MarkerClosed) {
+    RollbackStatus = gBS->OpenProtocol (
+                            ControllerHandle,
+                            &gMsGopOverrideDriverBindingMarkerProtocolGuid,
+                            (VOID **)&BindingMarker,
+                            This->DriverBindingHandle,
+                            ControllerHandle,
+                            EFI_OPEN_PROTOCOL_BY_DRIVER
+                            );
+    if (EFI_ERROR (RollbackStatus)) {
+      DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to reopen binding marker during rollback - code=%r\n", RollbackStatus));
+    }
+  }
+
+  if (GopRestored) {
+    RollbackStatus = gBS->UninstallProtocolInterface (
+                            ControllerHandle,
+                            &gEfiGraphicsOutputProtocolGuid,
+                            BindingMarker->OriginalGop
+                            );
+    if (EFI_ERROR (RollbackStatus)) {
+      DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to remove restored GOP during rollback - code=%r\n", RollbackStatus));
+    } else {
+      GopRestored = FALSE;
+    }
+  }
+
+  if (OverrideUninstalled && !GopRestored) {
+    RollbackStatus = gBS->InstallProtocolInterface (
+                            &ControllerHandle,
+                            mMsGopOverrideProtocolGuid,
+                            EFI_NATIVE_INTERFACE,
+                            BindingMarker->OriginalGop
+                            );
+    if (EFI_ERROR (RollbackStatus)) {
+      DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to restore GopOverride during rollback - code=%r\n", RollbackStatus));
+    }
+  }
+
+Exit:
+  return Status;
 }
 
 /**
@@ -495,7 +612,7 @@ DriverInit (
                   &HandleCount,
                   &Handles
                   );
-  if (!EFI_ERROR (Status) && (HandleCount == 1)) {
+  if (!EFI_ERROR (Status)) {
     DEBUG ((DEBUG_INFO, "INFO [GOP]: GOP already present, overriding immediately\n"));
     GopRegisteredCallback (NULL, NULL);
     if (Handles != NULL) {
