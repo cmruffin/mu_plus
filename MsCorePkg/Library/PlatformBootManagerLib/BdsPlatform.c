@@ -105,6 +105,13 @@ IsGopDevicePath (
       return TRUE;
     }
 
+    if ((DevicePathType (DevicePath) == HARDWARE_DEVICE_PATH) &&
+        (DevicePathSubType (DevicePath) == HW_VENDOR_DP) &&
+        (CompareGuid ( &((VENDOR_DEVICE_PATH *)DevicePath)->Guid, &gEfiGraphicsOutputProtocolGuid)))
+    {
+      return TRUE;
+    }
+
     DevicePath = NextDevicePathNode (DevicePath);
   }
 
