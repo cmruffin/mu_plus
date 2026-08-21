@@ -124,3 +124,12 @@ DeviceBootManagerUnableToBoot (
   )
 {
 }
+
+BOOLEAN
+EFIAPI
+DeviceBootManagerIsGopDevicePath (
+  IN EFI_DEVICE_PATH_PROTOCOL  *DevicePath
+  )
+{
+  return FALSE;
+}

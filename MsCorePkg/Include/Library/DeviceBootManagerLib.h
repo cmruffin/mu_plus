@@ -108,4 +108,12 @@ DeviceBootManagerUnableToBoot (
   VOID
   );
 
+/**
+ This is called from BdsPlatform to clean up non-preferred ConOut GOP device paths from the ConOut variable.
+*/
+BOOLEAN
+EFIAPI
+DeviceBootManagerIsGopDevicePath (
+  IN EFI_DEVICE_PATH_PROTOCOL  *DevicePath
+  );
 #endif
