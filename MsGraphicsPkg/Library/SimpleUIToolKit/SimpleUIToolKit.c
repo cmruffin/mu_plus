@@ -47,6 +47,14 @@ InitializeUIToolKit (
                   &gEfiGraphicsOutputProtocolGuid,
                   (VOID **)&mUITGop
                   );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_INFO, "INFO [SUIT]: Failed to find GOP on ConsoleOutHandle. Try globally.\n"));
+    Status = gBS->HandleProtocol (
+                    NULL,
+                    &gEfiGraphicsOutputProtocolGuid,
+                    (VOID **)&mUITGop
+                    );
+  }
 
   if (EFI_ERROR (Status)) {
     mUITGop = NULL;
