@@ -30,6 +30,15 @@ PlatformIsDevicePathUsb (
   );
 
 /**
+  Library function used to determine if the DevicePath is a valid GOP DevicePath for the platform.
+**/
+BOOLEAN
+EFIAPI
+PlatformIsDevicePathGop (
+  IN EFI_DEVICE_PATH_PROTOCOL  *DevicePath
+  );
+
+/**
 Library function used to provide the list of platform devices that MUST be
 connected at the beginning of BDS
 **/
