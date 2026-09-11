@@ -1475,6 +1475,7 @@ DriverInitStage2 (
              );
 
   ASSERT_EFI_ERROR (Status);
+  DEBUG ((DEBUG_INFO, "INFO [SWM]: Successfully completed initialization.  Status = %r\n", Status));
 
 Exit:
 
@@ -1512,15 +1513,6 @@ GopRegisteredCallback (
                   &gEfiGraphicsOutputProtocolGuid,
                   (VOID **)&mGop
                   );
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_INFO, "INFO [SWM]: Failed to find GOP on ConsoleOutHandle. Try globally.\n"));
-    Status = gBS->HandleProtocol (
-                    NULL,
-                    &gEfiGraphicsOutputProtocolGuid,
-                    (VOID **)&mGop
-                    );
-  }
-
   if (EFI_ERROR (Status)) {
     mGop = NULL;
     goto Exit;

@@ -232,7 +232,7 @@ AllocateRequiredProtocols (
 {
   EFI_STATUS  Status;
 
-  Status = gBS->LocateProtocol (&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&gGop);
+  Status = gBS->HandleProtocol (gST->ConsoleOutHandle, &gEfiGraphicsOutputProtocolGuid, (VOID **)&gGop);
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_INFO, "%a: Failed to get GraphicsOutput (%r).\r\n", __FUNCTION__, Status));
     gSwmProtocol = NULL;

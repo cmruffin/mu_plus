@@ -98,10 +98,20 @@ IsGopDevicePath (
   IN EFI_DEVICE_PATH_PROTOCOL  *DevicePath
   )
 {
+  CHAR16  *DevicePathText;
+
+  DEBUG((DEBUG_INFO, "[%a] CMR\n", __func__));
   while (!IsDevicePathEndType (DevicePath)) {
+  DevicePathText = ConvertDevicePathToText (DevicePath, FALSE, FALSE);
+  if (DevicePathText != NULL) {
+    DEBUG ((DEBUG_INFO, "[%a] Device path: %s\n", __func__, DevicePathText));
+    FreePool (DevicePathText);
+  }
+
     if ((DevicePathType (DevicePath) == ACPI_DEVICE_PATH) &&
         (DevicePathSubType (DevicePath) == ACPI_ADR_DP))
     {
+      DEBUG((DEBUG_INFO, "[%a] Found GOP device path\n", __func__));
       return TRUE;
     }
 
@@ -126,21 +136,44 @@ UpdateGopDevicePath (
   EFI_DEVICE_PATH_PROTOCOL  *Return;
   EFI_DEVICE_PATH_PROTOCOL  *Instance;
   BOOLEAN                   Exist;
+  CHAR16                    *DevicePathText;
+  CHAR16                    *GopDevicePathText;
+  CHAR16                    *InstanceText;
 
   Exist   = FALSE;
   Return  = NULL;
   GopSize = GetDevicePathSize (Gop);
+
+  DevicePathText = ConvertDevicePathToText (DevicePath, FALSE, FALSE);
+  if (DevicePathText != NULL) {
+    DEBUG ((DEBUG_INFO, "[%a] DevicePath: %s\n", __func__, DevicePathText));
+    FreePool (DevicePathText);
+  }
+
+  GopDevicePathText = ConvertDevicePathToText (Gop, FALSE, FALSE);
+  if (GopDevicePathText != NULL) {
+    DEBUG ((DEBUG_INFO, "[%a] GOP DevicePath: %s\n", __func__, GopDevicePathText));
+    FreePool (GopDevicePathText);
+  }
+
   do {
     Instance = GetNextDevicePathInstance (&DevicePath, &Size);
     if (Instance == NULL) {
       break;
     }
 
-    if ((!IsGopDevicePath (Instance) && !DeviceBootManagerIsGopDevicePath (Instance)) ||
+    InstanceText = ConvertDevicePathToText (Instance, FALSE, FALSE);
+    if (InstanceText != NULL) {
+      DEBUG ((DEBUG_INFO, "[%a] Instance: %s\n", __func__, InstanceText));
+      FreePool (InstanceText);
+    }
+
+    if ((!IsGopDevicePath (Instance)) ||
         ((Size == GopSize) && (CompareMem (Instance, Gop, GopSize) == 0))
         )
     {
       if ((Size == GopSize) && (CompareMem (Instance, Gop, GopSize) == 0)) {
+        DEBUG((DEBUG_INFO, "[%a:%d] Found existing GOP instance\n", __func__, __LINE__));
         Exist = TRUE;
       }
 
@@ -157,10 +190,21 @@ UpdateGopDevicePath (
   if (!Exist) {
     // NOTE: Return MAY be NULL, and is proper if it is NULL
     Temp   = Return;
+    DEBUG((DEBUG_INFO, "[%a:%d] Appending DevicePathInstance for GOP\n", __func__, __LINE__));
     Return = AppendDevicePathInstance (Return, Gop);
     if (Temp != NULL) {
       FreePool (Temp);
     }
+  }
+
+  if (Return != NULL) {
+    DevicePathText = ConvertDevicePathToText (Return, FALSE, FALSE);
+    if (DevicePathText != NULL) {
+      DEBUG ((DEBUG_INFO, "[%a] Output DevicePath: %s\n", __func__, DevicePathText));
+      FreePool (DevicePathText);
+    }
+  } else {
+    DEBUG ((DEBUG_INFO, "[%a] Output DevicePath: <NULL>\n", __func__));
   }
 
   return Return;
@@ -182,6 +226,7 @@ PlatformBootManagerBeforeConsole (
   EFI_DEVICE_PATH_PROTOCOL   *Temp;
   EFI_HANDLE                 Handle;
   BDS_CONSOLE_CONNECT_ENTRY  *PlatformConsoles;
+  CHAR16                     *ConsoleOutText;
 
   mBootMode = GetBootModeHob ();  // BeforeConsole has to be called before AfterConsole.
 
@@ -218,6 +263,12 @@ PlatformBootManagerBeforeConsole (
 
       FreePool (TempDevicePath);
       if (ConsoleOut != NULL) {
+        ConsoleOutText = ConvertDevicePathToText (ConsoleOut, FALSE, FALSE);
+        if (ConsoleOutText != NULL) {
+          DEBUG ((DEBUG_INFO, "%a: ConsoleOut: %s\n", __FUNCTION__, ConsoleOutText));
+          FreePool (ConsoleOutText);
+        }
+
         Status = gRT->SetVariable (
                         L"ConOut",
                         &gEfiGlobalVariableGuid,

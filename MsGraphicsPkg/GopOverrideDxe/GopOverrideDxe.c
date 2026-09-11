@@ -436,6 +436,7 @@ GopOverrideDriverBindingStop (
     goto Exit;
   }
 
+#if 1
   //
   // Reinstall the original GraphicsOutputProtocol on the same handle.
   //
@@ -450,6 +451,7 @@ GopOverrideDriverBindingStop (
     Status = EFI_DEVICE_ERROR;
     goto RestoreOverride;
   }
+#endif
 
   //
   // Close and remove the binding marker after all produced protocols have
@@ -512,6 +514,7 @@ RemoveRestoredGop:
   }
 
 RestoreOverride:
+#if 0
   RollbackStatus = gBS->InstallProtocolInterface (
                           &ControllerHandle,
                           mMsGopOverrideProtocolGuid,
@@ -521,7 +524,7 @@ RestoreOverride:
   if (EFI_ERROR (RollbackStatus)) {
     DEBUG ((DEBUG_ERROR, "ERROR [GOP]: Unable to restore GopOverride during rollback - code=%r\n", RollbackStatus));
   }
-
+#endif
 Exit:
   return Status;
 }
